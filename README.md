@@ -1,8 +1,8 @@
 Epoll Sample project
 ====================
 
-  To build and test
--------------------
+To build and test
+-----------------
 
 Make sure you have cmake. This will only work on a Linux OS with epoll and accept4 support.
 
@@ -17,6 +17,8 @@ Make sure you have cmake. This will only work on a Linux OS with epoll and accep
     // You can test by using netcat in another terminal
     nc localhost 9090
 
+Details
+-------
 
 A multi-threaded server which accepts bytes from the client and reverses them at arbitrary boundaries and sends it back to the client.
 

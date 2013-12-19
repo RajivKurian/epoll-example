@@ -107,8 +107,8 @@ exit_consumer:
 void event_loop(int efd,
                 int sfd,
                 processor::RingBuffer<event_data>* ring_buffer) {
-    int n, i;
-    int retval;
+  int n, i;
+  int retval;
 
   struct epoll_event event;
   // Buffer where events are returned.

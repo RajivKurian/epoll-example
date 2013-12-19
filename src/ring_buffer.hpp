@@ -47,7 +47,6 @@ public:
     int64_t current_producer_sequence = publisher_sequence_.load(std::memory_order::memory_order_relaxed);
     int64_t next_producer_sequence = current_producer_sequence + 1;
     int64_t wrap_point = next_producer_sequence - event_size_;
-    //printf("\nCurrent seq: %" PRId64 ", next seq: %" PRId64 ", wrap_point: %" PRId64 "\n", current_producer_sequence, next_producer_sequence, wrap_point);
     // TODO(Rajiv): Combine pausing with backoff + sleep.
     if (cached_consumer_sequence_ > wrap_point) {
       return next_producer_sequence;

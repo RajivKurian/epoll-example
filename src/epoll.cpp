@@ -16,23 +16,25 @@
 #define DEFAULT_BUFFER_SIZE 4096
 #define DEFAULT_RING_BUFFER_SIZE 1024
 
-struct connection_data {
+// Event data included the socket FD,
+// a pointer to a fixed sized buffer,
+// number of bytes written and 
+// a boolean indicating whether the worker thread should stop.
+struct event_data {
   int fd;
   char* buffer;
-  ssize_t capacity;
   int written;
   bool stop;
 
-  connection_data():
+  event_data():
   fd(-1),
   buffer(new char[DEFAULT_RING_BUFFER_SIZE]),
-  capacity(DEFAULT_BUFFER_SIZE),
   written(0),
   stop(false) {
 
   }
 
-  ~connection_data() {
+  ~event_data() {
     delete[] buffer;
   }
 };
@@ -49,7 +51,7 @@ void reverse(char* p, int length) {
   }
 }
 
-int process_messages(processor::RingBuffer<connection_data>* ring_buffer) {
+int process_messages(processor::RingBuffer<event_data>* ring_buffer) {
   int64_t prev_sequence = -1;
   int64_t next_sequence = -1;
   int num_events_processed = 0;
@@ -104,7 +106,7 @@ exit_consumer:
 
 void event_loop(int efd,
                 int sfd,
-                processor::RingBuffer<connection_data>* ring_buffer) {
+                processor::RingBuffer<event_data>* ring_buffer) {
     int n, i;
     int retval;
 
@@ -228,7 +230,7 @@ exit_loop:
 int main (int argc, char *argv[]) {
   int sfd, efd, retval;
   // Our ring buffer.
-  auto ring_buffer = new processor::RingBuffer<connection_data>(DEFAULT_RING_BUFFER_SIZE);
+  auto ring_buffer = new processor::RingBuffer<event_data>(DEFAULT_RING_BUFFER_SIZE);
 
   if (argc != 2) {
     fprintf(stderr, "Usage: %s [port]\n", argv[0]);

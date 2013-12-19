@@ -193,7 +193,7 @@ void event_loop(int epfd,
           if (count == -1) {
             // EAGAIN or EWOULDBLOCK means we have no more data that can be read.
             // Everything else is a real error.
-            if (!(errno == EAGAIN && errno == EWOULDBLOCK)) {
+            if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
               perror("read");
               should_close = true;
             }

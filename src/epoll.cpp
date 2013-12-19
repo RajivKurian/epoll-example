@@ -104,7 +104,7 @@ exit_consumer:
   return 1;
 }
 
-void event_loop(int efd,
+void event_loop(int epfd,
                 int sfd,
                 processor::RingBuffer<event_data>* ring_buffer) {
   int n, i;
@@ -116,7 +116,7 @@ void event_loop(int efd,
 
   while (true) {
 
-    n = epoll_wait(efd, events, MAXEVENTS, -1);
+    n = epoll_wait(epfd, events, MAXEVENTS, -1);
     for (i = 0; i < n; i++) {
       epoll_event current_event = events[i];
 
@@ -126,7 +126,12 @@ void event_loop(int efd,
         // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?).
         fprintf(stderr, "epoll error\n");
         close(current_event.data.fd);
-        continue;
+      } else if (current_event.events & EPOLLRDHUP) {
+        // Stream socket peer closed connection, or shut down writing half of connection.
+        // We still to handle disconnection when read()/recv() return 0 or -1 just to be sure.
+        printf("Closed connection on descriptor vis EPOLLRDHUP %d\n", current_event.data.fd);
+        // Closing the descriptor will make epoll remove it from the set of descriptors which are monitored.
+        close(current_event.data.fd);
       } else if (sfd == current_event.data.fd) {
         // We have a notification on the listening socket, which means one or more incoming connections.
         while (true) {
@@ -159,15 +164,14 @@ void event_loop(int efd,
 
          // Register the new FD to be monitored by epoll.
           event.data.fd = infd;
-          // Register for read events and enable edge triggered behavior for the FD.
-          event.events = EPOLLIN | EPOLLET;
-          retval = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
+          // Register for read events, disconnection events and enable edge triggered behavior for the FD.
+          event.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
+          retval = epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &event);
           if (retval == -1) {
             perror("epoll_ctl");
             abort();
           }
         }
-        continue;
       } else {
         // We have data on the fd waiting to be read. Read and  display it.
         // We must read whatever data is available completely, as we are running in edge-triggered mode
@@ -187,7 +191,6 @@ void event_loop(int efd,
           entry->fd = current_event.data.fd;
 
           if (count == -1) {
-            // Error of some kind.
             // EAGAIN or EWOULDBLOCK means we have no more data that can be read.
             // Everything else is a real error.
             if (!(errno == EAGAIN && errno == EWOULDBLOCK)) {
@@ -196,12 +199,13 @@ void event_loop(int efd,
             }
             done = true;
           } else if (count == 0) {
+            // Technically we don't need to handle this here, since we wait for EPOLLRDHUP. We handle it just to be sure.
             // End of file. The remote has closed the connection.
             should_close = true;
             done = true;
           } else {
             // Valid data. Process it.
-            // Check if the client want's to exit the server.
+            // Check if the client want's the server to exit.
             // This might never work out even if the client sends an exit signal because TCP might
             // split and rearrange the packets across epoll signal boundaries at the server.
             bool stop = (strncmp(entry->buffer, "exit", 4) == 0);
@@ -228,7 +232,7 @@ exit_loop:
 }
 
 int main (int argc, char *argv[]) {
-  int sfd, efd, retval;
+  int sfd, epfd, retval;
   // Our ring buffer.
   auto ring_buffer = new processor::RingBuffer<event_data>(DEFAULT_RING_BUFFER_SIZE);
 
@@ -251,8 +255,8 @@ int main (int argc, char *argv[]) {
     abort ();
   }
 
-  efd = epoll_create1(0);
-  if (efd == -1) {
+  epfd = epoll_create1(0);
+  if (epfd == -1) {
     perror ("epoll_create");
     abort ();
   }
@@ -261,7 +265,7 @@ int main (int argc, char *argv[]) {
     struct epoll_event event;
     event.data.fd = sfd;
     event.events = EPOLLIN | EPOLLET;
-    retval = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event);
+    retval = epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, &event);
     if (retval == -1) {
       perror ("epoll_ctl");
       abort ();
@@ -273,7 +277,7 @@ int main (int argc, char *argv[]) {
   std::thread t{process_messages, ring_buffer};
 
   // Start the event loop.
-  event_loop(efd, sfd, ring_buffer);
+  event_loop(epfd, sfd, ring_buffer);
 
   // Our server is ready to stop. Release all pending resources.
   t.join();

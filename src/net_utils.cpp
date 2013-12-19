@@ -31,16 +31,16 @@ int make_socket_non_blocking (int sfd) {
 int create_and_bind(char *port) {
   struct addrinfo hints;
   struct addrinfo *result, *rp;
-  int s, sfd;
+  int sfd, retval;
 
-  memset(&hints, 0, sizeof (struct addrinfo));
+  memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_UNSPEC;     // Return IPv4 and IPv6 choices.
   hints.ai_socktype = SOCK_STREAM; // We want a TCP socket.
   hints.ai_flags = AI_PASSIVE;     // All interfaces.
 
-  s = getaddrinfo(NULL, port, &hints, &result);
-  if (s != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror (s));
+  retval = getaddrinfo(NULL, port, &hints, &result);
+  if (retval != 0) {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(retval));
     return -1;
   }
 
@@ -49,8 +49,8 @@ int create_and_bind(char *port) {
     if (sfd == -1)
       continue;
 
-    s = bind(sfd, rp->ai_addr, rp->ai_addrlen);
-    if (s == 0) {
+    retval = bind(sfd, rp->ai_addr, rp->ai_addrlen);
+    if (retval == 0) {
       // We managed to bind successfully!
       break;
     }

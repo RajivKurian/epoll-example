@@ -60,7 +60,7 @@ int process_messages(processor::RingBuffer<connection_data>* ring_buffer) {
       _mm_pause();
       next_sequence = ring_buffer->getProducerSequence();
     }
-    // Process everything in the batch.
+    // Once we have a new sequence process all items between the previous sequence and the new one.
     for (int64_t index = prev_sequence + 1; index <= next_sequence; index++) {
       auto c_data = ring_buffer->get(index);
       auto client_fd = c_data->fd;
@@ -146,15 +146,18 @@ void event_loop(int efd,
             }
           }
 
+         // Print host and service info.
           retval = getnameinfo(&in_addr, in_len,
-                          hbuf, sizeof hbuf,
-                          sbuf, sizeof sbuf,
-                          NI_NUMERICHOST | NI_NUMERICSERV);
+                               hbuf, sizeof hbuf,
+                               sbuf, sizeof sbuf,
+                               NI_NUMERICHOST | NI_NUMERICSERV);
           if (retval == 0) {
             printf("Accepted connection on descriptor %d (host=%s, port=%s)\n", infd, hbuf, sbuf);
           }
 
+         // Register the new FD to be monitored by epoll.
           event.data.fd = infd;
+          // Register for read events and enable edge triggered behavior for the FD.
           event.events = EPOLLIN | EPOLLET;
           retval = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
           if (retval == -1) {
@@ -167,47 +170,51 @@ void event_loop(int efd,
         // We have data on the fd waiting to be read. Read and  display it.
         // We must read whatever data is available completely, as we are running in edge-triggered mode
         // and won't get a notification again for the same data.
-        int done = 0;
+        bool should_close = false, done = false;
 
-        while (true) {
+        while (!done) {
           ssize_t count;
           // Get the next ring buffer entry.
           auto next_write_index = ring_buffer->nextProducerSequence();
           auto entry = ring_buffer->get(next_write_index);
+
+          // Read the socket data into the buffer associated with the ring buffer entry.
+          // Set the entry's fd field to the current socket fd.
           count = read(current_event.data.fd, entry->buffer, DEFAULT_BUFFER_SIZE);
-          entry->fd = current_event.data.fd;
           entry->written = count;
+          entry->fd = current_event.data.fd;
 
           if (count == -1) {
-            /* If errno == EAGAIN, that means we have read all
-               data. So go back to the main loop. */
-            if (errno != EAGAIN) {
+            // Error of some kind.
+            // EAGAIN or EWOULDBLOCK means we have no more data that can be read.
+            // Everything else is a real error.
+            if (!(errno == EAGAIN && errno == EWOULDBLOCK)) {
               perror("read");
-              done = 1;
+              should_close = true;
             }
-            break;
+            done = true;
           } else if (count == 0) {
-            /* End of file. The remote has closed the
-               connection. */
-            done = 1;
-            break;
+            // End of file. The remote has closed the connection.
+            should_close = true;
+            done = true;
+          } else {
+            // Valid data. Process it.
+            // Check if the client want's to exit the server.
+            // This might never work out even if the client sends an exit signal because TCP might
+            // split and rearrange the packets across epoll signal boundaries at the server.
+            bool stop = (strncmp(entry->buffer, "exit", 4) == 0);
+            entry->stop = stop;
+
+            // Publish the ring buffer entry since all is well.
+            ring_buffer->publish(next_write_index);
+            if (stop)
+              goto exit_loop;
           }
-
-          // Check if the client want's to exit the server.
-          // This might never work out even if the client sends a exit signal because TCP might
-          // split and rearrange the packets across epoll signal boundaries at the server.
-          bool stop = (strncmp(entry->buffer, "exit", 4) == 0);
-          entry->stop = stop;
-
-          // Publish the ring buffer entry since all is well.
-          ring_buffer->publish(next_write_index);
-          if (stop)
-            goto exit_loop;
         }
 
-        if (done) {
-          printf("Closed connection on descriptor %d\n", current_event.data.fd);
 
+        if (should_close) {
+          printf("Closed connection on descriptor %d\n", current_event.data.fd);
           // Closing the descriptor will make epoll remove it from the set of descriptors which are monitored.
           close(current_event.data.fd);
         }
@@ -219,9 +226,7 @@ exit_loop:
 }
 
 int main (int argc, char *argv[]) {
-  int sfd, retval;
-  int efd;
-  struct epoll_event event;
+  int sfd, efd, retval;
   // Our ring buffer.
   auto ring_buffer = new processor::RingBuffer<connection_data>(DEFAULT_RING_BUFFER_SIZE);
 
@@ -250,25 +255,28 @@ int main (int argc, char *argv[]) {
     abort ();
   }
 
-  event.data.fd = sfd;
-  event.events = EPOLLIN | EPOLLET;
-  retval = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event);
-  if (retval == -1) {
-    perror ("epoll_ctl");
-    abort ();
+  {
+    struct epoll_event event;
+    event.data.fd = sfd;
+    event.events = EPOLLIN | EPOLLET;
+    retval = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event);
+    if (retval == -1) {
+      perror ("epoll_ctl");
+      abort ();
+    }
   }
-
-
 
 
   // Start the worker thread.
   std::thread t{process_messages, ring_buffer};
 
-  // The event loop.
+  // Start the event loop.
   event_loop(efd, sfd, ring_buffer);
 
+  // Our server is ready to stop. Release all pending resources.
   t.join();
   close(sfd);
   delete ring_buffer;
+
   return EXIT_SUCCESS;
 }

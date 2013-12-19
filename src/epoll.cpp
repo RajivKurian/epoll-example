@@ -110,15 +110,16 @@ void event_loop(int epfd,
   int n, i;
   int retval;
 
-  struct epoll_event event;
+  struct epoll_event event, current_event;
   // Buffer where events are returned.
   struct epoll_event* events = static_cast<epoll_event*>(calloc(MAXEVENTS, sizeof event));
 
   while (true) {
 
     n = epoll_wait(epfd, events, MAXEVENTS, -1);
+
     for (i = 0; i < n; i++) {
-      epoll_event current_event = events[i];
+      current_event = events[i];
 
       if ((current_event.events & EPOLLERR) ||
           (current_event.events & EPOLLHUP) ||

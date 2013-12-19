@@ -1,6 +1,23 @@
 Epoll Sample project
 ====================
 
+  To build and test
+-------------------
+
+Make sure you have cmake. This will only work on a Linux OS with epoll and accept4 support.
+
+    git clone https://github.com/RajivKurian/epoll-example.git
+    cd epoll-example
+    mkdir build
+    cd build
+    cmake ../src
+    make
+    // To start the server at port 9090
+    ./epoll 9090
+    // You can test by using netcat in another terminal
+    nc localhost 9090
+
+
 A multi-threaded server which accepts bytes from the client and reverses them at arbitrary boundaries and sends it back to the client.
 
 1.  Most of the code for the epoll part of the tutorial is from a [Banu Systems Blog](https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/). The extension was making it multi threaded.
@@ -19,25 +36,6 @@ A multi-threaded server which accepts bytes from the client and reverses them at
   2.  We can pick an appropriately sized buffer from a pool of buffers and use it for the rest of the message. Once the entire message is read we can put a pointer to this buffer on the ring buffer and publish it. Beware of slowloris attacks with such an approach though. Malicious or slow/faulty clients could cause buffer exhaustion on the server. For eg: A bunch of clients could connect and say they have a 1MB message to send. Once you allocate they never send any data but your buffers get used up. Using timers to reclaim such buffers and disconnect misbehaving clients can help with these problems.
   3.  Whenever we are short on buffers we could check all the ring buffer entries that have been processed in this cycle. We can claim all those buffers at such a point and put them in our pool. With this technique we must claim buffers at least once per cycle of the ring buffer otherwise we will end up reclaiming buffers that are still in use. This accounting can be a bit tricky. There are other ways of exchanging buffer info without any sharing (false or otherwise).
   4. Using a memory allocator like jemalloc can free us from maintaining our own pool of buffers. Jemalloc already uses slab allocation + buddy memory allocation to reuse buffers. We could use Jemalloc and just call malloc and free. Note: We still always call malloc and free on the same thread instead of across thread boundaries.
-
-  To build and test
--------------------
-
-  Make sure you have cmake. This will only work on a Linux OS with epoll and accept4 support.
-
-    git clone https://github.com/RajivKurian/epoll-example.git
-    cd epoll-example
-    mkdir build
-    cd build
-    cmake ../src
-    make
-    // To start the server at port 9090
-    ./epoll 9090
-    // You can test by using netcat in another terminal
-    nc localhost 9090
-
-                                                              
-
 
 
 

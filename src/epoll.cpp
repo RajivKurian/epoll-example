@@ -261,6 +261,7 @@ int main (int argc, char *argv[]) {
     abort ();
   }
 
+  // Register the listening socket for epoll events.
   {
     struct epoll_event event;
     event.data.fd = sfd;

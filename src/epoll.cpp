@@ -64,15 +64,15 @@ int process_messages(processor::RingBuffer<event_data>* ring_buffer) {
     }
     // Once we have a new sequence process all items between the previous sequence and the new one.
     for (int64_t index = prev_sequence + 1; index <= next_sequence; index++) {
-      auto c_data = ring_buffer->get(index);
-      auto client_fd = c_data->fd;
-      auto buffer = c_data->buffer;
+      auto e_data = ring_buffer->get(index);
+      auto client_fd = e_data->fd;
+      auto buffer = e_data->buffer;
       // Used to signal the server to stop.
-      //printf("\nConsumer stop value %s\n", c_data->stop ? "true" : "false");
-      if (c_data->stop)
+      //printf("\nConsumer stop value %s\n", e_data->stop ? "true" : "false");
+      if (e_data->stop)
         goto exit_consumer;
 
-      auto buffer_length = c_data->written;
+      auto buffer_length = e_data->written;
       assert(client_fd != -1);
       assert(buffer_length > 0);
 

@@ -16,7 +16,7 @@
 #define DEFAULT_BUFFER_SIZE 4096
 #define DEFAULT_RING_BUFFER_SIZE 1024
 
-// Event data included the socket FD,
+// Event data includes the socket FD,
 // a pointer to a fixed sized buffer,
 // number of bytes written and 
 // a boolean indicating whether the worker thread should stop.
